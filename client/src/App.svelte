@@ -163,6 +163,14 @@
         style="all: revert;"
         disabled={!startLocationCoordinates || !endLocationCoordinates}>Solve Route</button
       >
+      {#if startLocationCoordinates}
+        <Marker lnglat={startLocationCoordinates} color="green" />
+      {/if}
+
+      <!-- show the end marker on the map -->
+      {#if endLocationCoordinates}
+        <Marker lnglat={endLocationCoordinates} color="red" />
+      {/if}
     </LeftPane>
   </CustomControl>
   <ThemeSwitcher position="bottom-left" />
