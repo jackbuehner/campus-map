@@ -13,6 +13,8 @@ interface PaneDragOptions {
     screenWidthCutoff: number;
     /** How much to horixontally offset as expanding from collapsed mode to expanded mode. */
     offsetX: number;
+    /** How much to horizontally offset as expanding from collapsed mode to expanded mode. */
+    offsetY: number;
     /** How much to expand the width. */
     expandX: number;
   };
@@ -27,7 +29,12 @@ export function draggablePane({
   setMinimized,
   minHeight = 10,
   maxHeight,
-  mobile = { screenWidthCutoff: 540, offsetX: convertRemToPixels(1), expandX: convertRemToPixels(2) },
+  mobile = {
+    screenWidthCutoff: 540,
+    offsetX: convertRemToPixels(1),
+    offsetY: convertRemToPixels(1),
+    expandX: convertRemToPixels(2),
+  },
   pointerEventsBlockThreshold = 5,
 }: PaneDragOptions): Attachment {
   if (!shouldListen) {
@@ -44,6 +51,7 @@ export function draggablePane({
     // pending movement animation data
     let pendingDeltaY: number | null = null;
     let pendingOffsetX: number | null = null;
+    let pendingOffsetY: number | null = null;
     let pendingWidthChange: number | null = null;
     let animationFrameId: number | null = null;
 
@@ -63,14 +71,8 @@ export function draggablePane({
       // detect drag start
       draggableElement.addEventListener('pointerdown', handleDragStart);
 
-      // prevent dragging if selecting text
-      draggableElement.addEventListener('selectstart', handleDragEnd);
-      draggableElement.addEventListener('selectionchange', handleDragEnd);
-
       return () => {
         draggableElement.removeEventListener('pointerdown', handleDragStart);
-        draggableElement.removeEventListener('selectstart', handleDragEnd);
-        draggableElement.removeEventListener('selectionchange', handleDragEnd);
       };
     });
 
@@ -113,6 +115,40 @@ export function draggablePane({
       if (!isMouseDown) return;
       if (!draggableElement || !(draggableElement instanceof HTMLElement)) return;
       event.preventDefault();
+
+      // the target must not allow text selection
+      if (event.target instanceof HTMLElement) {
+        // check if user-select is blocked on the target
+        const targetUserSelect = window.getComputedStyle(event.target).userSelect;
+        let userSelectIsBlocked = targetUserSelect === 'none';
+
+        // if not, check parent elements
+        let parent = event.target.parentElement;
+        while (parent) {
+          const parentUserSelect = window.getComputedStyle(parent).userSelect;
+
+          // keep looking; auto means inherit from further up
+          if (parentUserSelect === 'auto' || parentUserSelect === 'inherit' || parentUserSelect === 'unset') {
+            parent = parent.parentElement;
+            continue;
+          }
+
+          // found a parent that blocks user-select for the target
+          if (parentUserSelect === 'none') {
+            userSelectIsBlocked = true;
+            break;
+          }
+
+          // other values mean that user-select is explicitly allowed
+          userSelectIsBlocked = false;
+          break;
+        }
+
+        // if user-select is not blocked, do not proceed with dragging
+        if (!userSelectIsBlocked) {
+          return;
+        }
+      }
 
       // track movement samples for velocity calculation
       const y = event.clientY;
@@ -170,6 +206,11 @@ export function draggablePane({
           // slowly expand the width as we progressively restore
           return mobile.expandX * heightRatio;
         })();
+
+        // slowly offset the height of the pane as we expand/minimize
+        // so that the bottom of the pane aligns with the screen edge
+        // when full expanded
+        pendingOffsetY = mobile.offsetY * heightRatio;
       }
 
       if (animationFrameId === null) {
@@ -196,8 +237,8 @@ export function draggablePane({
       draggableElement.style.height = newHeight + 'px';
 
       // apply pending x-axis changes in mobile mode
-      if (pendingOffsetX) {
-        draggableElement.style.transform = `translateX(-${pendingOffsetX}px)`;
+      if (pendingOffsetX || pendingOffsetY) {
+        draggableElement.style.transform = `translate(-${pendingOffsetX || 0}px, ${pendingOffsetY || 0}px)`;
       }
       if (pendingWidthChange) {
         draggableElement.style.width = `calc(${initialAsideWidth}px + ${pendingWidthChange}px)`;
@@ -205,6 +246,7 @@ export function draggablePane({
 
       pendingDeltaY = null;
       pendingOffsetX = null;
+      pendingOffsetY = null;
       pendingWidthChange = null;
       animationFrameId = null;
     }

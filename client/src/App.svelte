@@ -275,6 +275,7 @@
         bind:open={searchPaneIsOpen}
         visible={visiblePane === 'search'}
         hideCloseButton
+        style="user-select: none;"
       >
         <button
           onclick={() => {

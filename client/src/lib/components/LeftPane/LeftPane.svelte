@@ -18,6 +18,7 @@
     visible?: boolean;
     /** Hides the close button from the pane titlebar. */
     hideCloseButton?: boolean;
+    style?: string;
   }
 
   let {
@@ -29,12 +30,14 @@
     open = $bindable(),
     visible = $bindable(true),
     hideCloseButton = false,
+    style,
   }: LeftPaneProps = $props();
 </script>
 
 <aside
   style:--map-frame-height={mapFrameHeight + 'px'}
   style:--map-frame-width={mapFrameWidth + 'px'}
+  {style}
   class:minimized
   class:invisible={!visible}
   class:closed={!open}
@@ -92,9 +95,11 @@
 <style>
   aside {
     --header-bar-height: 3rem;
+    --blank-space-height: 5rem;
+    --aside-height: calc(var(--map-frame-height) - var(--blank-space-height));
 
     position: relative;
-    height: calc(var(--map-frame-height) - 5rem);
+    height: var(--aside-height);
     width: 300px;
     display: flex;
     flex-direction: column;
@@ -109,8 +114,13 @@
 
     transition:
       height 300ms var(--easing-expo-out),
+      width 300ms var(--easing-expo-out),
       opacity 300ms var(--easing-expo-out),
       transform 300ms var(--easing-expo-out);
+  }
+  aside :global(*) {
+    /* ensure that the browser does not take over the pointer event while dragging to implement panning gestures */
+    touch-action: none;
   }
   aside.minimized {
     height: var(--header-bar-height);
@@ -143,11 +153,12 @@
   @media (width <= 540px) {
     aside {
       width: 100%;
-      transform: translateX(-1rem);
+      transform: translate(-1rem, 1rem);
+      height: calc(var(--aside-height) + 1rem);
     }
     aside.minimized {
       width: calc(100% - 2rem);
-      transform: translateX(0);
+      transform: translate(0);
     }
   }
 
