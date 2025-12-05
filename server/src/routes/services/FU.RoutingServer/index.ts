@@ -43,6 +43,7 @@ export default (router: Router, serviceFolder: string, serviceRootPathname: stri
       ctx.body = await solveRoute(params, format);
       ctx.status = 200;
     } catch (error) {
+      console.error('Error solving route:', error);
       ctx.body = { error: (error as Error).message };
       ctx.status = 500;
     }

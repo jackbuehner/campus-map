@@ -1,4 +1,5 @@
-import { rm } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { exportDbGeometryTableToFlatGeobuf } from './exportDbGeometryTableToFlatGeobuf.js';
 import { generateRoutingTables, RoutingInitOptions } from './generateRoutingTables.js';
 import { generateVectorTiles } from './generateVectorTiles.js';
@@ -34,5 +35,20 @@ export async function generateVectorTilesForDbGeometryTables(
   if (routingOptions) {
     console.log('Creating pgRouting database...');
     await generateRoutingTables(constants.databaseGeometryExportFolder, routingOptions);
+  }
+
+  // generate stubs for each layer in the repository
+  // so we can indicate the presence of a feature service
+  // for each layer
+  for await (const table of tables) {
+    const serviceDir = path.join(
+      constants.fileBasedServicesDataFolder,
+      table.schema,
+      `${table.schema}."${table.name}"`
+    );
+    await rm(serviceDir, { recursive: true, force: true });
+    await mkdir(serviceDir, { recursive: true });
+    const serviceStubPath = path.join(serviceDir, 'FeatureServer.stub');
+    await writeFile(serviceStubPath, '', 'utf-8');
   }
 }

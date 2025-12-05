@@ -1,0 +1,37 @@
+diff --git a/node_modules/koop-provider-pg/src/db/repo/data.js b/node_modules/koop-provider-pg/src/db/repo/data.js
+index cde8a8e..7d9ef33 100644
+--- a/node_modules/koop-provider-pg/src/db/repo/data.js
++++ b/node_modules/koop-provider-pg/src/db/repo/data.js
+@@ -7,6 +7,10 @@ class DataRepository {
+   }
+ 
+   async getGeometryColumnName(schema, table) {
++    // trim quotes from schema and table names
++    schema = schema.replace(/"/g, '');
++    table = table.replace(/"/g, '');
++
+     try {
+       const result = await this.db.oneOrNone(sql.getGeometryColumnName, {
+         schema: schema,
+diff --git a/node_modules/koop-provider-pg/src/model/index.js b/node_modules/koop-provider-pg/src/model/index.js
+index 7379799..bc8178a 100644
+--- a/node_modules/koop-provider-pg/src/model/index.js
++++ b/node_modules/koop-provider-pg/src/model/index.js
+@@ -1,5 +1,6 @@
+ const _ = require('lodash')
+ const { db } = require('../db')
++const config = require('config')
+ 
+ class Model {
+   constructor() { }
+@@ -9,8 +10,8 @@ class Model {
+       const splitPath = req.params.id.split('.');
+       const schema = splitPath[0];
+       const table = splitPath[1];
+-      const id = process.env.PG_OBJECTID || 'gid';
+-      const pgLimit = process.env.PG_LIMIT || 10000000;
++      const id = process.env.PG_OBJECTID || config.db.objectIdField || 'gid';
++      const pgLimit = process.env.PG_LIMIT || config.db.pgLimit || 10000000;
+ 
+       if (!table)
+         throw new Error('The "id" parameter must be in the form of "schema.table"');

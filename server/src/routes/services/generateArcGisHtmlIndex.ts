@@ -24,7 +24,8 @@ export function generateArcGisHtmlIndex(input: IndexInput, route: RouteInput): s
   const body = document.getElementsByTagName('body')[0];
   if (!body) return '';
 
-  const titleText = `Folder: /`;
+  const folder = route.currentPathname.replace(route.serviceRootPathname, '').slice(1) || '/';
+  const titleText = `Folder: ${folder}`;
 
   const space = () => document.createTextNode('\u00A0\u00A0');
 
@@ -144,7 +145,7 @@ export function generateArcGisHtmlIndex(input: IndexInput, route: RouteInput): s
     input.folders.forEach((folder) => {
       const li = document.createElement('li');
       const link = document.createElement('a');
-      link.setAttribute('href', path.join(route.currentPathname, folder));
+      link.setAttribute('href', encodeURI(path.join(route.currentPathname, folder)));
       link.appendChild(document.createTextNode(folder));
       li.appendChild(link);
       foldersList.appendChild(li);
@@ -158,8 +159,19 @@ export function generateArcGisHtmlIndex(input: IndexInput, route: RouteInput): s
     input.services.forEach((service) => {
       const li = document.createElement('li');
       const link = document.createElement('a');
-      link.setAttribute('href', path.join(route.currentPathname, `${service.name}/${service.type}`));
-      link.appendChild(document.createTextNode(`${service.name} (${service.type})`));
+
+      link.setAttribute(
+        'href',
+        encodeURI(path.join(route.currentPathname, `${service.name}/${service.type}`))
+      );
+
+      let serviceName = service.name;
+      if (serviceName.startsWith('data."') && serviceName.endsWith('"')) {
+        // unwrap quoted service name
+        serviceName = serviceName.slice(6, -1);
+      }
+      link.appendChild(document.createTextNode(`${serviceName} (${service.type})`));
+
       li.appendChild(link);
       servicesList.appendChild(li);
     });

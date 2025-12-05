@@ -74,7 +74,7 @@
     const endY = resolvedEnd.lat;
     const crs = 'EPSG:4326'; // right click copies lat-lon (WGS 84)
 
-    fetch('http://localhost:3000/arcgis/rest/services/FurmanCampusGraph/FU.RoutingServer/solve', {
+    fetch('http://localhost:3000/rest/services/FurmanCampusGraph/FU.RoutingServer/solve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ startX, startY, endX, endY, crs }),
@@ -168,7 +168,7 @@
     class="map-container"
     bind:center
     bind:zoom
-    style="http://localhost:3000/arcgis/rest/services/FurmanCampusMap/VectorTileServer/resources/styles/root.json"
+    style="http://localhost:3000/rest/services/FurmanCampusMap/VectorTileServer/resources/styles/root.json"
     attributionControl={false}
     oncontextmenu={handleRightClick}
     doubleClickZoom={false}

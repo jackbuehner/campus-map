@@ -1,7 +1,7 @@
 import { readdir, readFile, stat } from 'fs/promises';
 import path from 'path';
 
-export const knownServiceTypes = ['VectorTileServer', 'FU.RoutingServer'] as const;
+export const knownServiceTypes = ['VectorTileServer', 'FU.RoutingServer', 'FeatureServer'] as const;
 
 /**
  * Gets child folders from a services directory. A child folder is any folder
@@ -47,7 +47,7 @@ interface ServiceInfo {
   /** The pathname to access the service over HTTP requests */
   pathname: string;
   /** The type of service */
-  type: 'VectorTileServer' | 'FU.RoutingServer';
+  type: 'VectorTileServer' | 'FU.RoutingServer' | 'FeatureServer';
 }
 
 interface VectorTileServiceInfo extends ServiceInfo {
@@ -105,6 +105,30 @@ async function getFuRoutingServices(searchDirectory: string, parentPathname: str
   return services;
 }
 
+async function getFeatureServices(searchDirectory: string, parentPathname: string) {
+  // read the services directory
+  const directories = await readdir(searchDirectory);
+
+  // treat directories with FeatureServer.sub as feature services
+  // and all other directories as child folders
+  const services: ServiceInfo[] = [];
+  for (const dir of directories) {
+    const dirPath = path.join(searchDirectory, dir);
+    const indexJsonPath = path.join(dirPath, 'FeatureServer.stub');
+    try {
+      await readFile(indexJsonPath, 'utf-8');
+      services.push({
+        name: dir,
+        path: dirPath,
+        pathname: path.posix.join(parentPathname, dir, 'FeatureServer'),
+        type: 'FeatureServer',
+      });
+    } catch {}
+  }
+
+  return services;
+}
+
 /**
  * Discovers all services in a given directory and its subdirectories.
  */
@@ -112,11 +136,12 @@ export async function discoverServices(searchDirectory: string, parentPathname =
   // get the services in the directory
   const vectorTileServices = await getVectorTileServices(searchDirectory, parentPathname);
   const fuRoutingServices = await getFuRoutingServices(searchDirectory, parentPathname);
+  const featureServices = await getFeatureServices(searchDirectory, parentPathname);
   // add additional service types here
 
   // combine all service types and sort alphabetically
-  const allServices: ServiceInfo[] = [...vectorTileServices, ...fuRoutingServices].sort((a, b) =>
-    a.name.localeCompare(b.name)
+  const allServices: ServiceInfo[] = [...vectorTileServices, ...fuRoutingServices, ...featureServices].sort(
+    (a, b) => a.name.localeCompare(b.name)
   );
 
   // get all services in child folders

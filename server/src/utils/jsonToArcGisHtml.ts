@@ -12,6 +12,16 @@ interface RouteInput {
   currentUrl: URL;
 }
 
+export function extractServiceNameFromUrl(url: URL): string {
+  const pathParts = url.pathname.split('/');
+  let serviceName = decodeURIComponent(pathParts[pathParts.length - 2] || '');
+  if (serviceName.startsWith('data."') && serviceName.endsWith('"')) {
+    // unwrap quoted service name
+    serviceName = serviceName.slice(6, -1);
+  }
+  return serviceName;
+}
+
 /**
  * Converts any JSON data into nested HTML lists dynamically.
  * Produces readable, structured output for arbitrary JSON.
@@ -34,8 +44,8 @@ export function jsonToArcGisHtml(
 
   // extract service type and name from URL
   const pathParts = url.pathname.split('/');
-  const type = pathParts[pathParts.length - 1] as 'VectorTileServer' | 'FU.RoutingServer';
-  const serviceName = pathParts[pathParts.length - 2];
+  const type = pathParts[pathParts.length - 1] as 'VectorTileServer' | 'FU.RoutingServer' | 'FeatureServer';
+  const serviceName = extractServiceNameFromUrl(url);
 
   const space = () => document.createTextNode('\u00A0\u00A0');
 
@@ -86,7 +96,8 @@ export function jsonToArcGisHtml(
     const pathParts = url.pathname
       .replace(serviceRootPathname, '')
       .split('/')
-      .filter((part) => part.length > 0);
+      .filter((part) => part.length > 0)
+      .map((part) => decodeURIComponent(part));
 
     let cumulativePath = serviceRootPathname;
     const partLinks = pathParts.reduce((acc, part) => {
@@ -98,13 +109,13 @@ export function jsonToArcGisHtml(
         if (previousPartElemTextNode && previousPartElemTextNode.nodeType === previousPartElem.TEXT_NODE) {
           const modifiedPartTextNode = document.createTextNode(previousPartElem.textContent + ` (${part})`);
           previousPartElem.replaceChild(modifiedPartTextNode, previousPartElemTextNode);
-          previousPartElem.setAttribute('href', cumulativePath);
+          previousPartElem.setAttribute('href', encodeURI(cumulativePath));
           return [...acc, previousPartElem];
         }
       }
 
       const partLink = document.createElement('a');
-      partLink.setAttribute('href', cumulativePath);
+      partLink.setAttribute('href', encodeURI(cumulativePath));
       partLink.appendChild(document.createTextNode(part));
       return [...acc, partLink];
     }, [] as HTMLAnchorElement[]);
@@ -146,22 +157,36 @@ export function jsonToArcGisHtml(
   body.appendChild(propertiesDiv);
 
   function writeProperty(label: string, ...elements: (Element | Node)[]) {
-    const b = document.createElement('b');
-    b.appendChild(document.createTextNode(label + ': '));
-    propertiesDiv.appendChild(b);
-    propertiesDiv.appendChild(space());
-    elements.forEach((element) => {
+    if (label) {
+      const b = document.createElement('b');
+      b.appendChild(document.createTextNode(label + ': '));
+      propertiesDiv.appendChild(b);
+      propertiesDiv.appendChild(space());
+    }
+
+    const reducedSpaceAtEnd = elements.length === 1 && elements[0]?.nodeName === 'ul';
+
+    elements.forEach((element, index) => {
       propertiesDiv.appendChild(element);
+
+      const isLast = index === elements.length - 1;
+      if (reducedSpaceAtEnd && isLast) return;
+
       propertiesDiv.appendChild(space());
       propertiesDiv.appendChild(space());
     });
-    propertiesDiv.appendChild(document.createElement('br'));
-    propertiesDiv.appendChild(document.createElement('br'));
+
+    if (reducedSpaceAtEnd) {
+      return;
+    } else {
+      propertiesDiv.appendChild(document.createElement('br'));
+      propertiesDiv.appendChild(document.createElement('br'));
+    }
   }
 
   // view in links
   var linkElements: Element[] = [];
-  if (type === 'VectorTileServer') {
+  if (type === 'VectorTileServer' || type === 'FeatureServer') {
     const viewInJsApiLink = document.createElement('a');
     viewInJsApiLink.setAttribute('href', `?f=jsapi`);
     viewInJsApiLink.appendChild(document.createTextNode('ArcGIS JavaScript'));
@@ -208,6 +233,7 @@ export function jsonToArcGisHtml(
   }
   writeProperty('View in', ...linkElements);
 
+  // styles
   if (type === 'VectorTileServer' && typeof data.defaultStyles === 'string') {
     const styleLink = document.createElement('a');
     const styleUrl = new URL(url.toString());
@@ -218,8 +244,99 @@ export function jsonToArcGisHtml(
     data.defaultStyles = undefined;
   }
 
-  if (typeof data.name === 'string' || data.name === undefined) {
-    const name = document.createTextNode(data.name || '');
+  // service description
+  if (typeof data.serviceDescription === 'string' || data.serviceDescription === undefined) {
+    const serviceDescription = document.createTextNode(data.serviceDescription || '');
+    writeProperty('Service Description', serviceDescription);
+    data.serviceDescription = undefined;
+  }
+
+  // all layers and tables
+  if (type === 'FeatureServer') {
+    const allLayersLink = document.createElement('a');
+    const allLayersUrl = new URL(url.toString());
+    allLayersUrl.pathname += '/layers';
+    allLayersUrl.searchParams.set('f', 'pjson');
+    allLayersLink.setAttribute('href', withoutOrigin(allLayersUrl));
+    allLayersLink.appendChild(document.createTextNode('All Layers and Tables'));
+    writeProperty('', allLayersLink);
+  }
+
+  // hasVersionedData
+  if (typeof data.hasVersionedData === 'boolean') {
+    const hasVersionedData = document.createTextNode(data.hasVersionedData ? 'true' : 'false');
+    writeProperty('Has Versioned Data', hasVersionedData);
+    data.hasVersionedData = undefined;
+  }
+
+  // maxRecordCount
+  if (typeof data.maxRecordCount === 'number') {
+    const maxRecordCount = document.createTextNode(data.maxRecordCount.toString());
+    writeProperty('MaxRecordCount', maxRecordCount);
+    data.maxRecordCount = undefined;
+  }
+
+  // supportedQueryFormats
+  if (typeof data.supportedQueryFormats === 'string') {
+    const supportedQueryFormats = document.createTextNode(data.supportedQueryFormats);
+    writeProperty('Supported Query Formats', supportedQueryFormats);
+    data.supportedQueryFormats = undefined;
+  }
+
+  // layers bullets
+  if (Array.isArray(data.layers)) {
+    const layersList = document.createElement('ul');
+    (data.layers as any[]).forEach((layer) => {
+      const li = document.createElement('li');
+      const layerLink = document.createElement('a');
+      const layerUrl = new URL(url.toString());
+      layerUrl.pathname += `/${layer.id}`;
+      layerUrl.searchParams.set('f', 'pjson');
+      layerLink.setAttribute('href', withoutOrigin(layerUrl));
+      let layerName = layer.name || `Layer ${layer.id}`;
+      if (typeof layerName !== 'string') {
+        layerName = `Layer ${layer.id}`;
+      }
+      layerLink.appendChild(document.createTextNode(layerName));
+      li.appendChild(layerLink);
+      layersList.appendChild(li);
+    });
+
+    if (layersList.childNodes.length > 0) {
+      writeProperty('Layers', layersList);
+    }
+
+    data.layers = undefined;
+  }
+
+  // tables bullets
+  if (Array.isArray(data.tables)) {
+    const tablesList = document.createElement('ul');
+    (data.tables as any[]).forEach((table) => {
+      const li = document.createElement('li');
+      const tableLink = document.createElement('a');
+      const tableUrl = new URL(url.toString());
+      tableUrl.pathname += `/${table.id}`;
+      tableUrl.searchParams.set('f', 'pjson');
+      tableLink.setAttribute('href', withoutOrigin(tableUrl));
+      let tableName = table.name || `Table ${table.id}`;
+      if (typeof tableName !== 'string') {
+        tableName = `Table ${table.id}`;
+      }
+      tableLink.appendChild(document.createTextNode(tableName));
+      li.appendChild(tableLink);
+      tablesList.appendChild(li);
+    });
+
+    if (tablesList.childNodes.length > 0) {
+      writeProperty('Tables', tablesList);
+    }
+
+    data.tables = undefined;
+  }
+
+  if ((typeof data.name === 'string' || data.name === undefined) && type !== 'FeatureServer') {
+    const name = document.createTextNode(data.name || serviceName);
     writeProperty('Name', name);
     data.name = undefined;
   }
@@ -236,6 +353,56 @@ export function jsonToArcGisHtml(
     data.copyrightText = undefined;
   }
 
+  // spatial reference
+  if (data.spatialReference) {
+    const spatialRefText = parseSpatialReference(data.spatialReference);
+
+    if (spatialRefText) {
+      const spatialReference = document.createTextNode(spatialRefText);
+      writeProperty('Spatial Reference', spatialReference);
+    }
+
+    data.spatialReference = undefined;
+  }
+
+  function renderExtent(label: string, extent: Record<string, any>) {
+    const xMinText = document.createTextNode('XMin: ' + extent.xmin);
+    const yMinText = document.createTextNode('YMin: ' + extent.ymin);
+    const xMaxText = document.createTextNode('XMax: ' + extent.xmax);
+    const yMaxText = document.createTextNode('YMax: ' + extent.ymax);
+    const spatialRefText = document.createTextNode(
+      'Spatial Reference: ' + parseSpatialReference(extent.spatialReference)
+    );
+
+    const ul = document.createElement('ul');
+    ul.appendChild(xMinText);
+    ul.appendChild(document.createElement('br'));
+    ul.appendChild(yMinText);
+    ul.appendChild(document.createElement('br'));
+    ul.appendChild(xMaxText);
+    ul.appendChild(document.createElement('br'));
+    ul.appendChild(yMaxText);
+    ul.appendChild(document.createElement('br'));
+    ul.appendChild(spatialRefText);
+
+    writeProperty(label, ul);
+  }
+
+  // initial extent
+  if (data.initialExtent) {
+    const initialExtent = data.initialExtent as Record<string, any>;
+    renderExtent('Initial Extent', initialExtent);
+    data.initialExtent = undefined;
+  }
+
+  // full extent
+  if (data.fullExtent) {
+    const fullExtent = data.fullExtent as Record<string, any>;
+    renderExtent('Full Extent', fullExtent);
+    data.fullExtent = undefined;
+  }
+
+  // write remaining properties as JSON
   const restJson = document.createElement('pre');
   restJson.appendChild(document.createTextNode(JSON.stringify(data, null, 2)));
   writeProperty('Additional Properties', restJson);
@@ -331,3 +498,26 @@ LI {
 .srLinks {  FONT-SIZE: 0.8em; }
 .srInfo {  FONT-SIZE: 0.8em; COLOR:#494; }
 `;
+
+function withoutOrigin(url: URL) {
+  return url.pathname + url.search + url.hash;
+}
+
+function parseSpatialReference(spatialReference: { wkid?: number; latestWkid?: number }): string {
+  const wkid = spatialReference.wkid?.toString();
+  const latestWkid = spatialReference.latestWkid?.toString();
+
+  if ((wkid && !latestWkid) || (wkid && wkid === latestWkid)) {
+    return wkid;
+  }
+
+  if (latestWkid && !wkid) {
+    return latestWkid;
+  }
+
+  if (wkid && latestWkid) {
+    return `${wkid} (${latestWkid})`;
+  }
+
+  return '';
+}
